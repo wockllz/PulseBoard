@@ -1,14 +1,21 @@
 {
   "name": "pulseboard",
   "version": "1.0.0",
-  "description": "PulseBoard — a real-time collaborative board. Live cursors, presence, offline sync and a scrubbable history. WebSockets + op-log sync.",
+  "description": "PulseBoard \u2014 a real-time collaborative board. Live cursors, presence, offline sync and a scrubbable history. WebSockets + op-log sync.",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
     "dev": "node server.js",
-    "selftest": "node tests/selftest.js"
+    "selftest": "node tests/selftest.js",
+    "test": "node tests/selftest.js"
   },
-  "keywords": ["realtime", "websockets", "collaboration", "crdt", "offline-first"],
+  "keywords": [
+    "realtime",
+    "websockets",
+    "collaboration",
+    "crdt",
+    "offline-first"
+  ],
   "license": "MIT",
   "dependencies": {
     "better-sqlite3": "^12.11.1",

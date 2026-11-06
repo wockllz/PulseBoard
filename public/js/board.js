@@ -4,10 +4,21 @@
   const $ = (id) => document.getElementById(id);
   const COLORS = ["#5eb8ff", "#55d6a0", "#f0b354", "#a78bff", "#ff8fc7", "#6de3e0", "#ff9d6b"];
 
+  // crypto.randomUUID only exists in secure contexts (https / localhost).
+  // Opened via a LAN IP it is missing, so fall back to a safe generator.
+  const uid = () => {
+    try {
+      if (window.crypto && typeof window.crypto.randomUUID === "function") {
+        return window.crypto.randomUUID();
+      }
+    } catch (_) { /* insecure context */ }
+    return "id-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 10);
+  };
+
   const store = (window.localStorage.getItem("pb-name") || "").trim();
   const state = {
     roomId: null,
-    clientId: crypto.randomUUID(),
+    clientId: uid(),
     name: store || "You",
     color: COLORS[Math.floor(Math.random() * COLORS.length)],
     cards: new Map(),
@@ -31,6 +42,20 @@
   }
   const now = () => Date.now();
   const esc = (s) => String(s);
+
+  function toast(msg) {
+    let el = document.getElementById("toast");
+    if (!el) {
+      el = document.createElement("div");
+      el.id = "toast";
+      el.className = "toast";
+      document.body.appendChild(el);
+    }
+    el.textContent = msg;
+    el.classList.add("show");
+    clearTimeout(toast._t);
+    toast._t = setTimeout(() => el.classList.remove("show"), 2600);
+  }
 
   /* ------------------------------------------------------------------ rooms */
   async function loadRooms(selectId) {
@@ -241,7 +266,7 @@
       del.title = "Delete card";
       del.addEventListener("click", (e) => {
         e.stopPropagation();
-        sendOp({ id: crypto.randomUUID(), type: "card-delete", cardId: card.id, ts: now(), payload: {} });
+        sendOp({ id: uid(), type: "card-delete", cardId: card.id, ts: now(), payload: {} });
       });
       el.appendChild(del);
 
@@ -269,7 +294,7 @@
     const commit = () => {
       const title = input.value.trim();
       if (title && title !== card.title) {
-        sendOp({ id: crypto.randomUUID(), type: "card-update", cardId: card.id, ts: now(), payload: { title } });
+        sendOp({ id: uid(), type: "card-update", cardId: card.id, ts: now(), payload: { title } });
       } else {
         renderAll();
       }
@@ -352,23 +377,82 @@
       const card = state.cards.get(cardId);
       if (!card || card.status === status) return;
       sendOp({
-        id: crypto.randomUUID(), type: "card-update", cardId,
+        id: uid(), type: "card-update", cardId,
         ts: now(), payload: { status, pos: now() }
       });
     });
   }
 
   /* ------------------------------------------------------------- add cards */
+  let composer = null;
+
+  function closeComposer() {
+    if (composer) { composer.remove(); composer = null; }
+  }
+
+  function openComposer(status) {
+    closeComposer();
+    const host = document.querySelector(`[data-cards="${status}"]`);
+    if (!host) return;
+
+    const box = document.createElement("div");
+    box.className = "composer";
+    box.innerHTML = `
+      <input class="composer-input" placeholder="Card title…" maxlength="120" />
+      <div class="composer-row">
+        <button class="btn-mini primary" type="button">ADD</button>
+        <button class="btn-mini" type="button">CANCEL</button>
+      </div>`;
+    host.prepend(box);
+    composer = box;
+
+    const input = box.querySelector(".composer-input");
+    const [addBtn, cancelBtn] = box.querySelectorAll(".btn-mini");
+    input.focus();
+
+    const commit = async () => {
+      const title = input.value.trim();
+      if (!title) { input.focus(); return; }
+      closeComposer();
+      await createCard(title, status);
+    };
+
+    addBtn.addEventListener("click", commit);
+    cancelBtn.addEventListener("click", closeComposer);
+    input.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") { e.preventDefault(); commit(); }
+      if (e.key === "Escape") closeComposer();
+    });
+  }
+
+  async function createCard(title, status) {
+    const op = {
+      id: uid(), type: "card-create", cardId: uid(),
+      ts: now(), payload: { title, status, pos: now() }
+    };
+    // optimistic apply so the card appears instantly
+    applyLocalOp(op);
+    render();
+
+    if (state.connected && state.ws && state.ws.readyState === 1) {
+      state.ws.send(JSON.stringify({ kind: "op", room: state.roomId, op }));
+    } else {
+      // socket down: persist over HTTP so nothing is lost
+      const res = await fetch(`/api/rooms/${state.roomId}/cards`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title, status })
+      });
+      if (!res.ok) {
+        toast("Could not save that card — check the connection.");
+      }
+    }
+  }
+
   for (const btn of document.querySelectorAll("[data-add]")) {
     btn.addEventListener("click", () => {
       if (state.historyAt) return;
-      const status = btn.dataset.add;
-      const title = (window.prompt("Card title?") || "").trim();
-      if (!title) return;
-      sendOp({
-        id: crypto.randomUUID(), type: "card-create", cardId: crypto.randomUUID(),
-        ts: now(), payload: { title, status, pos: now() }
-      });
+      openComposer(btn.dataset.add);
     });
   }
 

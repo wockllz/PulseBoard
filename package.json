@@ -7,7 +7,8 @@
     "start": "node server.js",
     "dev": "node server.js",
     "selftest": "node tests/selftest.js",
-    "test": "node tests/selftest.js"
+    "test": "node tests/selftest.js",
+    "bootcheck": "node tests/boot-check.js public/js/main.js"
   },
   "keywords": [
     "realtime",

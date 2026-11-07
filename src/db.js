@@ -36,6 +36,17 @@ CREATE TABLE IF NOT EXISTS cards (
   deleted INTEGER DEFAULT 0,
   FOREIGN KEY (room_id) REFERENCES rooms(id) ON DELETE CASCADE
 );
+CREATE TABLE IF NOT EXISTS attachments (
+  id TEXT PRIMARY KEY,
+  card_id TEXT NOT NULL,
+  room_id TEXT NOT NULL,
+  name TEXT NOT NULL,
+  mime TEXT DEFAULT 'application/octet-stream',
+  size INTEGER DEFAULT 0,
+  path TEXT NOT NULL,
+  created_at INTEGER NOT NULL,
+  FOREIGN KEY (card_id) REFERENCES cards(id) ON DELETE CASCADE
+);
 CREATE TABLE IF NOT EXISTS ops (
   id TEXT PRIMARY KEY,
   room_id TEXT NOT NULL,
@@ -211,7 +222,28 @@ function opCount(roomId) {
   return db.prepare("SELECT COUNT(*) AS n FROM ops WHERE room_id = ?").get(roomId).n;
 }
 
+function addAttachment(a) {
+  db.prepare(`INSERT INTO attachments (id, card_id, room_id, name, mime, size, path, created_at)
+              VALUES (@id, @card_id, @room_id, @name, @mime, @size, @path, @created_at)`).run(a);
+  return getAttachment(a.id);
+}
+
+function getAttachment(id) {
+  return db.prepare("SELECT * FROM attachments WHERE id = ?").get(id) || null;
+}
+
+function listAttachmentsForRoom(roomId) {
+  return db.prepare("SELECT id, card_id, name, mime, size, created_at FROM attachments WHERE room_id = ? ORDER BY created_at ASC").all(roomId);
+}
+
+function deleteAttachment(id) {
+  const row = getAttachment(id);
+  db.prepare("DELETE FROM attachments WHERE id = ?").run(id);
+  return row;
+}
+
 module.exports = {
+  addAttachment, getAttachment, listAttachmentsForRoom, deleteAttachment,
   uid,
   createRoom,
   getRoom,

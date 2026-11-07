@@ -172,7 +172,19 @@ async function main() {
     const futureHist = await (await fetch(`${base}/api/rooms/${roomId}/history?t=${Date.now() + 5000}`)).json();
     ok("history at now includes everything", futureHist.cards.length === 3);
 
-    // ---- delete
+    // ---- attachments
+  const upForm = new FormData();
+  upForm.append("file", new Blob([Buffer.from("%PDF-1.4 attachment test")], { type: "application/pdf" }), "spec.pdf");
+  const up = await fetch(`${base}/api/cards/${cardId}/attachments`, { method: "POST", body: upForm });
+  ok("PDF attachment uploaded", up.status === 201, `status ${up.status}`);
+  const upBody = await up.json();
+  ok("attachment metadata stored", !!upBody.attachment && upBody.attachment.name.includes("spec"));
+  const fileRes = await fetch(`${base}${upBody.url}`);
+  ok("attached file downloads", fileRes.status === 200, `${fileRes.headers.get("content-type")}`);
+  const roomAfter = await (await fetch(`${base}/api/rooms/${roomId}`)).json();
+  ok("room payload lists the attachment", (roomAfter.attachments || []).length === 1);
+
+  // ---- delete
     const deleteOp = { id: "op-del-1", type: "card-delete", cardId: "offline-card-2", ts: Date.now() + 5000, client: "client-a", payload: {} };
     await post(`${base}/api/rooms/${roomId}/ops`, { op: deleteOp });
     const afterDelete = await (await fetch(`${base}/api/rooms/${roomId}`)).json();

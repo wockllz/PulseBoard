@@ -2,6 +2,8 @@
 const path = require("path");
 const http = require("http");
 const express = require("express");
+const multer = require("multer");
+const fs = require("fs");
 const { securityHeaders } = require("./middleware/security");
 const { WebSocketServer } = require("ws");
 const db = require("./src/db");
@@ -20,6 +22,51 @@ app.use(express.static(path.join(__dirname, "public")));
 app.get("/", (req, res) => res.render("index"));
 
 /* --------------------------------------------------------------------- api */
+const UPLOAD_DIR = process.env.PB_UPLOAD_DIR || path.join(__dirname, "uploads");
+fs.mkdirSync(UPLOAD_DIR, { recursive: true });
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 15 * 1024 * 1024 } });
+
+app.post("/api/cards/:id/attachments", upload.single("file"), (req, res) => {
+  const card = db.getCard(req.params.id);
+  if (!card) return res.status(404).json({ error: "Card not found." });
+  if (!req.file) return res.status(400).json({ error: "No file uploaded." });
+
+  const id = db.uid();
+  const safe = String(req.file.originalname || "file").replace(/[^\w.\-]+/g, "_").slice(0, 80);
+  const target = path.join(UPLOAD_DIR, id + "-" + safe);
+  fs.writeFileSync(target, req.file.buffer);
+
+  const att = db.addAttachment({
+    id,
+    card_id: card.id,
+    room_id: card.room_id,
+    name: safe,
+    mime: req.file.mimetype || "application/octet-stream",
+    size: req.file.size || 0,
+    path: target,
+    created_at: Date.now()
+  });
+
+  broadcast(card.room_id, { kind: "attachment-added", cardId: card.id, attachment: { ...att, path: undefined } });
+  res.status(201).json({ attachment: { ...att, path: undefined }, url: `/files/${att.id}` });
+});
+
+app.get("/files/:id", (req, res) => {
+  const att = db.getAttachment(req.params.id);
+  if (!att || !fs.existsSync(att.path)) return res.status(404).send("File not found");
+  res.setHeader("Content-Type", att.mime);
+  res.setHeader("Content-Disposition", `inline; filename="${att.name}"`);
+  fs.createReadStream(att.path).pipe(res);
+});
+
+app.delete("/api/attachments/:id", (req, res) => {
+  const att = db.deleteAttachment(req.params.id);
+  if (!att) return res.status(404).json({ error: "Attachment not found." });
+  try { fs.unlinkSync(att.path); } catch (_) {}
+  broadcast(att.room_id, { kind: "attachment-removed", cardId: att.card_id, id: att.id });
+  res.json({ ok: true });
+});
+
 app.get("/api/health", (req, res) => res.json({ ok: true, name: "PulseBoard" }));
 
 app.get("/api/rooms", (req, res) => res.json({ rooms: db.listRooms() }));
@@ -39,7 +86,7 @@ app.delete("/api/rooms/:id", (req, res) => {
 app.get("/api/rooms/:id", (req, res) => {
   const room = db.getRoom(req.params.id);
   if (!room) return res.status(404).json({ error: "Room not found." });
-  res.json({ room, cards: db.listCards(room.id), ops: db.opCount(room.id) });
+  res.json({ room, cards: db.listCards(room.id), ops: db.opCount(room.id), attachments: db.listAttachmentsForRoom(room.id) });
 });
 
 app.post("/api/rooms/:id/cards", (req, res) => {

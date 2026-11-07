@@ -22,6 +22,7 @@
     name: store || "You",
     color: COLORS[Math.floor(Math.random() * COLORS.length)],
     cards: new Map(),
+    files: new Map(),
     clients: [],
     ws: null,
     connected: false,
@@ -131,6 +132,19 @@
         renderPresence();
         return;
       }
+      if (msg.kind === "attachment-added") {
+        const list = state.files.get(msg.cardId) || [];
+        list.push(msg.attachment);
+        state.files.set(msg.cardId, list);
+        renderAll();
+        return;
+      }
+      if (msg.kind === "attachment-removed") {
+        const list = (state.files.get(msg.cardId) || []).filter((a) => a.id !== msg.id);
+        state.files.set(msg.cardId, list);
+        renderAll();
+        return;
+      }
       if (msg.kind === "cursor") {
         renderCursor(msg);
         return;
@@ -155,6 +169,12 @@
     state.roomId = roomId;
     const { body } = await api(`/api/rooms/${roomId}`);
     state.cards = new Map((body.cards || []).map((c) => [c.id, c]));
+    state.files = new Map();
+    for (const a of body.attachments || []) {
+      const list = state.files.get(a.card_id) || [];
+      list.push(a);
+      state.files.set(a.card_id, list);
+    }
     state.ops = body.ops || 0;
     $("ops-count").textContent = `${state.ops} operations`;
     exitHistory();
@@ -247,6 +267,61 @@
     title.className = "card-title";
     title.textContent = esc(card.title);
     el.appendChild(title);
+
+    // detail text (if any)
+    if (card.detail && card.detail.trim()) {
+      const det = document.createElement("div");
+      det.className = "card-detail";
+      det.textContent = esc(card.detail);
+      el.appendChild(det);
+    }
+
+    // attachments
+    const files = state.files.get(card.id) || [];
+    if (files.length) {
+      const wrap = document.createElement("div");
+      wrap.className = "card-files";
+      for (const f of files) {
+        const chip = document.createElement("a");
+        chip.className = "chip";
+        chip.href = `/files/${f.id}`;
+        chip.target = "_blank";
+        chip.rel = "noopener";
+        chip.textContent = "📎 " + f.name;
+        chip.title = `${Math.round((f.size || 0) / 1024)} KB`;
+        wrap.appendChild(chip);
+      }
+      el.appendChild(wrap);
+    }
+
+    if (!state.historyAt) {
+      const attach = document.createElement("button");
+      attach.className = "card-attach";
+      attach.type = "button";
+      attach.title = "Attach a PDF or image";
+      attach.textContent = "📎";
+      attach.addEventListener("click", (ev) => {
+        ev.stopPropagation();
+        const input = document.createElement("input");
+        input.type = "file";
+        input.accept = ".pdf,.png,.jpg,.jpeg,.txt,.md";
+        input.addEventListener("change", async () => {
+          const file = input.files && input.files[0];
+          if (!file) return;
+          attach.textContent = "…";
+          const form = new FormData();
+          form.append("file", file);
+          const res = await fetch(`/api/cards/${card.id}/attachments`, { method: "POST", body: form });
+          attach.textContent = "📎";
+          if (!res.ok) {
+            const b = await res.json().catch(() => ({}));
+            toast(b.error || "Upload failed");
+          }
+        });
+        input.click();
+      });
+      el.appendChild(attach);
+    }
 
     const meta = document.createElement("div");
     meta.className = "card-meta";

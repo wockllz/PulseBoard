@@ -194,3 +194,45 @@ select:focus, input:focus { outline: none; border-color: var(--violet); box-shad
   font-size: 11px; font-weight: 800; color: #fff; border: 2px solid #fff;
   margin-left: -8px; box-shadow: 0 2px 6px rgba(30, 20, 60, .18);
 }
+
+/* --- card attachments + detail ------------------------------------- */
+.card-detail {
+  font-size: 0.84rem;
+  color: var(--muted, #6b6484);
+  margin: 2px 0 8px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+}
+
+.card-files { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 100%;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: #ede9fe;
+  color: #5b21b6;
+  font-size: 0.74rem;
+  font-weight: 600;
+  text-decoration: none;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.chip:hover { background: #ddd6fe; }
+
+.card-attach {
+  position: absolute;
+  top: 8px;
+  right: 32px;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  font-size: 0.85rem;
+  opacity: 0.55;
+  padding: 2px;
+}
+.card-attach:hover { opacity: 1; }
